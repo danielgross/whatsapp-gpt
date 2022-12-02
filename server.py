@@ -21,8 +21,11 @@ def get_input_box():
     return PAGE.query_selector("div[class*='PromptTextarea__TextareaWrapper']").query_selector("textarea")
 
 def is_logged_in():
-    # See if we have a textarea with data-id="root"
-    return get_input_box() is not None
+    try:
+        # See if we have a textarea with data-id="root"
+        return get_input_box() is not None
+    except AttributeError:
+        return False
 
 def send_message(message):
     # Send the message
@@ -30,6 +33,8 @@ def send_message(message):
     box.click()
     box.fill(message)
     box.press("Enter")
+    while PAGE.query_selector(".result-streaming") is not None:
+        time.sleep(0.1)
 
 def get_last_message():
     """Get the latest message"""
@@ -42,7 +47,6 @@ def chat():
     message = flask.request.args.get("q")
     print("Sending message: ", message)
     send_message(message)
-    time.sleep(10) # TODO: there are about ten million ways to be smarter than this
     response = get_last_message()
     print("Response: ", response)
     return response
