@@ -33,12 +33,8 @@ func (mycli *MyClient) register() {
 func (mycli *MyClient) eventHandler(evt interface{}) {
 	switch v := evt.(type) {
 	case *events.Message:
-
-		// Using personal whatsapp
-		msg:= v.Message.GetConversation()
-		// Uncomment using a Biz Account
-		//newMessage := v.Message
-		// msg := newMessage.GetExtendedTextMessage().GetText() 
+		newMessage := v.Message
+		msg := newMessage.GetExtendedTextMessage().GetText()
 		fmt.Println("Message received:", msg)
 		// Make a http request to localhost:5001/chat?q= with the message, and send the response
 		// URL encode the message
@@ -55,9 +51,6 @@ func (mycli *MyClient) eventHandler(evt interface{}) {
 		newMsg := buf.String()
 		// encode out as a string
 		response := &waProto.Message{Conversation: proto.String(string(newMsg))}
-		fmt.Println("Response received:", response)
-		fmt.Println("userJID:", v.Info.Sender.User)
-		fmt.Println("DefaultUserServer", types.DefaultUserServer)
 		userJid := types.NewJID(v.Info.Sender.User, types.DefaultUserServer)
 		mycli.WAClient.SendMessage(context.Background(), userJid, "", response)
 
