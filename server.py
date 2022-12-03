@@ -22,11 +22,8 @@ def get_input_box():
         return PAGE.query_selector("div[class*='PromptTextarea__TextareaWrapper']").query_selector("textarea")
 
 def is_logged_in():
-    try:
-        # See if we have a textarea with data-id="root"
-        return get_input_box() is not None
-    except AttributeError:
-        return False
+    # See if we have a textarea with data-id="root"
+    return get_input_box() is not None
 
 def send_message(message):
     # Send the message
