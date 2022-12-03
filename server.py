@@ -13,12 +13,13 @@ PLAY = sync_playwright().start()
 BROWSER = PLAY.chromium.launch_persistent_context(
     user_data_dir="/tmp/playwright",
     headless=False,
+    channel="chrome",
 )
 PAGE = BROWSER.new_page()
 
 def get_input_box():
-    """Get the child textarea of `PromptTextarea__TextareaWrapper`"""
-    return PAGE.query_selector("div[class*='PromptTextarea__TextareaWrapper']").query_selector("textarea")
+        """Get the child textarea of `PromptTextarea__TextareaWrapper`"""
+        return PAGE.query_selector("div[class*='PromptTextarea__TextareaWrapper']").query_selector("textarea")
 
 def is_logged_in():
     try:
