@@ -34,13 +34,17 @@ func (mycli *MyClient) eventHandler(evt interface{}) {
 	switch v := evt.(type) {
 	case *events.Message:
 		newMessage := v.Message
-		msg := newMessage.GetExtendedTextMessage().GetText()
-		fmt.Println("Message received:", msg)
+		msg := newMessage.GetConversation()
+		fmt.Println("Message from:", v.Info.Sender.User, "->", msg)
+		if msg == "" {
+			return
+		}
 		// Make a http request to localhost:5001/chat?q= with the message, and send the response
 		// URL encode the message
 		urlEncoded := url.QueryEscape(msg)
+		url := "http://localhost:5001/chat?q=" + urlEncoded
 		// Make the request
-		resp, err := http.Get("http://localhost:5001/chat?q=" + urlEncoded)
+		resp, err := http.Get(url)
 		if err != nil {
 			fmt.Println("Error making request:", err)
 			return
@@ -51,6 +55,8 @@ func (mycli *MyClient) eventHandler(evt interface{}) {
 		newMsg := buf.String()
 		// encode out as a string
 		response := &waProto.Message{Conversation: proto.String(string(newMsg))}
+		fmt.Println("Response:", response)
+
 		userJid := types.NewJID(v.Info.Sender.User, types.DefaultUserServer)
 		mycli.WAClient.SendMessage(context.Background(), userJid, "", response)
 
