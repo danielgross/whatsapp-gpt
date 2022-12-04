@@ -1,10 +1,7 @@
 """Make some requests to OpenAI's chatbot"""
 
 import time
-import os 
 import flask
-
-from flask import g
 
 from playwright.sync_api import sync_playwright
 
