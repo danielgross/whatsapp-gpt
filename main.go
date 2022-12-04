@@ -57,8 +57,13 @@ func (mycli *MyClient) eventHandler(evt interface{}) {
 		response := &waProto.Message{Conversation: proto.String(string(newMsg))}
 		fmt.Println("Response:", response)
 
-		userJid := types.NewJID(v.Info.Sender.User, types.DefaultUserServer)
-		mycli.WAClient.SendMessage(context.Background(), userJid, "", response)
+		if v.Info.IsGroup {
+			userJid := types.NewJID(v.Info.Chat.User, types.GroupServer)
+			mycli.WAClient.SendMessage(context.Background(), userJid, "", response)
+		} else {
+			userJid := types.NewJID(v.Info.Sender.User, types.DefaultUserServer)
+			mycli.WAClient.SendMessage(context.Background(), userJid, "", response)
+		}
 
 	}
 }
