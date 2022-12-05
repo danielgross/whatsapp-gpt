@@ -1,9 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -50,9 +50,18 @@ func (mycli *MyClient) eventHandler(evt interface{}) {
 			return
 		}
 		// Read the response
-		buf := new(bytes.Buffer)
-		buf.ReadFrom(resp.Body)
-		newMsg := buf.String()
+		newMsg, err := ioutil.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			fmt.Printf("Error reading response: %v\n", err)
+			return
+		}
+
+		if resp.StatusCode/100 != 2 { // If we don't encounter a 2XX status code, fail.
+			fmt.Printf("Non-2XX response: %s\nResponse body: %s\n", resp.Status, newMsg)
+			return
+		}
+
 		// encode out as a string
 		response := &waProto.Message{Conversation: proto.String(string(newMsg))}
 		fmt.Println("Response:", response)
@@ -108,7 +117,8 @@ func main() {
 	}
 
 	// Listen to Ctrl+C (you can also do something else that prevents the program from exiting)
-	c := make(chan os.Signal)
+	// Notify requires that there be enough capachttps://pkg.go.dev/os/signal#Notify
+	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	<-c
 
