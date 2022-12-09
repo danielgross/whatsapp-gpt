@@ -30,15 +30,33 @@ func (mycli *MyClient) register() {
 	mycli.eventHandlerID = mycli.WAClient.AddEventHandler(mycli.eventHandler)
 }
 
+// contains checks if a string is in an array of strings
+func contains(arr []string, str string) bool {
+	for _, a := range arr {
+		if a == str {
+			return true
+		}
+	}
+	return false
+}
+
 func (mycli *MyClient) eventHandler(evt interface{}) {
 	switch v := evt.(type) {
 	case *events.Message:
 		newMessage := v.Message
 		msg := newMessage.GetConversation()
-		fmt.Println("Message from:", v.Info.Sender.User, "->", msg)
+		fmt.Println("Message from - Conv:", v.Info.Sender.User, "->", msg)
 		if msg == "" {
 			return
 		}
+
+		phoneNumbers := []string{}
+
+		
+		if !contains(phoneNumbers, v.Info.Sender.User) {
+			return
+		}
+
 		// Make a http request to localhost:5001/chat?q= with the message, and send the response
 		// URL encode the message
 		urlEncoded := url.QueryEscape(msg)
@@ -56,10 +74,8 @@ func (mycli *MyClient) eventHandler(evt interface{}) {
 		// encode out as a string
 		response := &waProto.Message{Conversation: proto.String(string(newMsg))}
 		fmt.Println("Response:", response)
-
 		userJid := types.NewJID(v.Info.Sender.User, types.DefaultUserServer)
 		mycli.WAClient.SendMessage(context.Background(), userJid, "", response)
-
 	}
 }
 
