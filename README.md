@@ -13,17 +13,17 @@ Once you have clone `cd whatsapp-gpt` and now we have to make sure there is GO a
 - Install Go you can find the guide below 
 
 - Next Python Requirements
-
+```bash
     pip install flask
-
+```
 - Next Playwright
-
+```bash
     pip install playwright
-
+```
 - After installation of playwright
-
+```bash
     playwright install
-
+```
 - Now you are good to go 😋 
 
 
@@ -31,11 +31,14 @@ Once you have clone `cd whatsapp-gpt` and now we have to make sure there is GO a
 
 - Run the main.go first
 
+```bash
     go run main.go
-
+```
 - Run server now
 
+```
     python3 server.py
+```    
 
 **note:** Make sure to scan the QR code that is created or else the whole things is joke 🤡
 
@@ -102,3 +105,8 @@ go version go1.4 linux/amd64
 ```
 
 Full install instructions can be found here: https://golang.org/doc/install
+
+
+
+
+
