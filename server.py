@@ -13,11 +13,15 @@ PROFILE_DIR = "/tmp/playwright" if '--profile' not in sys.argv else sys.argv[sys
 PORT = 5001 if '--port' not in sys.argv else int(sys.argv[sys.argv.index('--port') + 1])
 APP = flask.Flask(__name__)
 PLAY = sync_playwright().start()
-BROWSER = PLAY.chromium.launch_persistent_context(
+CHROMIUM_BROWSER = PLAY.chromium.launch_persistent_context(
     user_data_dir=PROFILE_DIR,
     headless=False,
 )
-PAGE = BROWSER.new_page()
+FIREFOX_BROWSER = PLAY.firefox.launch_persistent_context(
+    user_data_dir=PROFILE_DIR,
+    headless=False,
+)
+PAGE = FIREFOX_BROWSER.new_page()
 
 def get_input_box():
     """Find the input box by searching for the largest visible one."""
