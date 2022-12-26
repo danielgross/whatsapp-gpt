@@ -4,6 +4,8 @@ import time
 import os 
 import flask
 import sys
+from flask import Flask, jsonify
+import json
 
 from flask import g
 
@@ -13,9 +15,15 @@ PROFILE_DIR = "/tmp/playwright" if '--profile' not in sys.argv else sys.argv[sys
 PORT = 5001 if '--port' not in sys.argv else int(sys.argv[sys.argv.index('--port') + 1])
 APP = flask.Flask(__name__)
 PLAY = sync_playwright().start()
-BROWSER = PLAY.chromium.launch_persistent_context(
+
+#BROWSER = PLAY.chromium.launch_persistent_context(
+#    user_data_dir=PROFILE_DIR,
+#    headless=False,
+#)
+BROWSER = PLAY.firefox.launch_persistent_context(
     user_data_dir=PROFILE_DIR,
     headless=False,
+    java_script_enabled=True,
 )
 PAGE = BROWSER.new_page()
 
@@ -52,14 +60,32 @@ def get_last_message():
     last_element = page_elements[-2]
     return last_element.inner_text()
 
+def get_last_code():
+    """Get the latest message"""
+    page_elements = PAGE.query_selector_all("code.language-sql")
+    if (len(page_elements) > 1):
+        print("CODE ELEMENT 0:" + page_elements[0])
+        print("CODE ELEMENT 1:" + page_elements[1])
+        print("CODE ELEMENT 2:" + page_elements[2])
+        last_element = page_elements[-2]
+    elif (len(page_elements) > 0):
+        last_element = page_elements[-1]
+    else:
+        return ""
+    return last_element.inner_text()
+
 @APP.route("/chat", methods=["GET"])
 def chat():
     message = flask.request.args.get("q")
     print("Sending message: ", message)
     send_message(message)
     response = get_last_message()
-    print("Response: ", response)
-    return response
+    code = get_last_code()
+    data = {
+        "code": code,
+        "response": response
+    }
+    return jsonify(data)
 
 def start_browser():
     PAGE.goto("https://chat.openai.com/")

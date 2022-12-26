@@ -4,6 +4,7 @@ go 1.19
 
 require (
 	filippo.io/edwards25519 v1.0.0 // indirect
+	github.com/go-sql-driver/mysql v1.7.0 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/mattn/go-sqlite3 v1.14.16 // indirect
 	github.com/mdp/qrterminal v1.0.1 // indirect

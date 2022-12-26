@@ -1,13 +1,22 @@
 package main
 
 import (
-	"bytes"
 	"context"
+	"database/sql"
+	"encoding/csv"
+	"encoding/json"
 	"fmt"
+	_ "github.com/go-sql-driver/mysql"
+	"io"
+	"log"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
+	"regexp"
+	"strconv"
+	"strings"
 	"syscall"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -37,24 +46,44 @@ func (mycli *MyClient) eventHandler(evt interface{}) {
 		msg := newMessage.GetConversation()
 		fmt.Println("Message from:", v.Info.Sender.User, "->", msg)
 		if msg == "" {
-			return
+			//	return
 		}
-		// Make a http request to localhost:5001/chat?q= with the message, and send the response
-		// URL encode the message
-		urlEncoded := url.QueryEscape(msg)
-		url := "http://localhost:5001/chat?q=" + urlEncoded
-		// Make the request
-		resp, err := http.Get(url)
-		if err != nil {
-			fmt.Println("Error making request:", err)
-			return
+		if v.Message.DocumentMessage != nil {
+			document := v.Message.GetDocumentMessage()
+			if document != nil {
+				log.Printf("Downloaing file")
+				data, err := mycli.WAClient.Download(document)
+				if err != nil {
+					log.Printf("Failed to download audio: %v", err)
+					return
+				}
+				exts, _ := mime.ExtensionsByType(document.GetMimetype())
+				//path := fmt.Sprintf("./Downloads/Documents/%s-%s%s", sender, v.Info.ID, exts[0])
+				path := fmt.Sprintf("%s%s", v.Info.ID, exts[0])
+				err = os.WriteFile(path, data, 0600)
+				if err != nil {
+					log.Printf("Failed to save document: %v", err)
+					return
+				}
+				log.Printf("Saved document in message to %s", path)
+				if exts[0] == ".csv" {
+					log.Printf("Downloaing file")
+					tableDefinition := uploadTable(v.Info.ID)
+					msg = "SQL Table definition is " + tableDefinition.creation
+				} else {
+					return
+				}
+			}
 		}
-		// Read the response
-		buf := new(bytes.Buffer)
-		buf.ReadFrom(resp.Body)
-		newMsg := buf.String()
-		// encode out as a string
-		response := &waProto.Message{Conversation: proto.String(string(newMsg))}
+
+		responseData := talkToGPT(msg)
+		var response *waProto.Message
+		if responseData.Code != "" {
+			sqlResult := executeQuery(responseData.Code)
+			response = &waProto.Message{Conversation: proto.String(sqlResult)}
+		} else {
+			response = &waProto.Message{Conversation: proto.String(responseData.Response)}
+		}
 		fmt.Println("Response:", response)
 
 		user := v.Info.Sender.User
@@ -65,6 +94,46 @@ func (mycli *MyClient) eventHandler(evt interface{}) {
 		}
 		mycli.WAClient.SendMessage(context.Background(), types.NewJID(user, server), "", response)
 	}
+}
+func talkToGPT(message string) ResponseData {
+	var data ResponseData
+	// Make a http request to localhost:5001/chat?q= with the message, and send the response
+	// URL encode the message
+	urlEncoded := url.QueryEscape(message)
+	url := "http://localhost:5001/chat?q=" + urlEncoded
+	// Make the request
+	resp, err := http.Get(url)
+	if err != nil {
+		fmt.Println("Error making request:", err)
+		return data
+	}
+	defer resp.Body.Close()
+
+	decoder := json.NewDecoder(resp.Body)
+	for {
+		// Decode the next value in the response
+		err = decoder.Decode(&data)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			// Handle the error
+		}
+	}
+
+	return data
+}
+
+type ResponseData struct {
+	Response string `json:"response"`
+	Code     string `json:"code"`
+}
+
+func uploadTable(name string) TableDefinition {
+	tableDefinition := defineTableByFile(name)
+	insertion := getInsertSQL(name, tableDefinition.types)
+	execSql(tableDefinition.deletion, tableDefinition.creation, tableDefinition.insertion, insertion)
+	return tableDefinition
 }
 
 func main() {
@@ -117,4 +186,183 @@ func main() {
 	<-c
 
 	client.Disconnect()
+}
+
+func executeQuery(query string) string {
+	db, err := sql.Open("mysql", "tripactions:prodActive00@tcp(127.0.0.1:3306)/gpt")
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
+
+	// Execute the query
+	var count int
+	fmt.Println("QUERY: " + query)
+	err = db.QueryRow(query).Scan(&count)
+	if err != nil {
+		panic(err.Error())
+	}
+	return string(count)
+}
+
+func execSql(deletion string, creation string, insertion string, values [][]string) {
+
+	db, err := sql.Open("mysql", "tripactions:prodActive00@tcp(127.0.0.1:3306)/gpt")
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
+
+	_, err = db.Exec(deletion)
+	if err != nil {
+		panic(err)
+	}
+	_, err = db.Exec(creation)
+	if err != nil {
+		panic(err)
+	}
+	for _, rec := range values {
+		args := make([]interface{}, len(rec))
+		for i, v := range rec {
+			args[i] = strings.ReplaceAll(v, "\"", "")
+		}
+
+		query := fmt.Sprintf(insertion, args...)
+		_, err = db.Exec(query)
+		if err != nil {
+			panic(err)
+		}
+	}
+	fmt.Println("SQL executed successfully")
+}
+
+func getInsertSQL(filename string, columnTypes []string) [][]string {
+	file, err := os.Open(filename + ".csv")
+	if err != nil {
+		// handle the error
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+
+	_, err = reader.Read()
+	if err != nil {
+		// handle the error
+	}
+	content, err := reader.ReadAll()
+	if err != nil {
+		// handle the error
+	}
+	values := [][]string{}
+	for _, line := range content {
+		lineValue := []string{}
+		for i, columnValue := range line {
+			lineValue = append(lineValue, convert(columnTypes[i], columnValue))
+		}
+		values = append(values, lineValue)
+	}
+	return values
+}
+
+func convert(columnType string, value string) string {
+	if columnType == "DATETIME2" {
+		value = strings.Replace(value, "T", " ", 1)
+		value = strings.Replace(value, "Z", "", 1)
+	}
+	return value
+}
+
+type TableDefinition struct {
+	creation  string
+	deletion  string
+	insertion string
+	types     []string
+}
+
+func defineTableByFile(filename string) TableDefinition {
+	file, err := os.Open(filename + ".csv")
+	if err != nil {
+		// handle the error
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	header, err := reader.Read()
+	if err != nil {
+		// handle the error
+	}
+	firstRow, err := reader.Read()
+	if err != nil {
+		// handle the error
+	}
+	var types []string
+	var columnTypes []string
+	var empties []string
+	for i, columnName := range header {
+		columnType := mysqlDataType(firstRow[i])
+		columnTypes = append(columnTypes, columnType)
+		if strings.HasPrefix(columnType, "DATETIME") {
+			types = append(types, columnName+" DATETIME")
+		} else {
+			types = append(types, columnName+" "+columnType)
+		}
+		empties = append(empties, "\"%s\"")
+	}
+	deletion := "DROP TABLE IF EXISTS " + filename + ";"
+	creation := "CREATE TABLE " + filename + " (\n" + strings.Join(types, ",\n") + "\n);"
+	insertion := "INSERT INTO " + filename + " (" + strings.Join(header, ", ") + ") VALUES (" + strings.Join(empties, ", ") + ");"
+	tableDefinition := TableDefinition{deletion: deletion, creation: creation, types: columnTypes, insertion: insertion}
+	return tableDefinition
+}
+
+func mysqlDataType(s string) string {
+	// check if the string can be parsed to an integer
+	_, errInt := strconv.ParseInt(s, 10, 0)
+	if errInt == nil {
+		return "INTEGER"
+	}
+
+	// check if the string can be parsed to a floating-point number
+	_, errFloat := strconv.ParseFloat(s, 64)
+	if errFloat == nil {
+		return "FLOAT"
+	}
+
+	// check if the string can be parsed to a boolean
+	_, errBool := strconv.ParseBool(s)
+	if errBool == nil {
+		return "BOOLEAN"
+	}
+
+	// check if the string matches the 'YYYY-MM-DD' date format
+	dateRegexp := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+	if dateRegexp.MatchString(s) {
+		return "DATE"
+	}
+
+	// check if the string matches the 'YYYY-MM-DD HH:MM:SS' datetime format
+	datetimeRegexp := regexp.MustCompile(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$`)
+	if datetimeRegexp.MatchString(s) {
+		return "DATETIME"
+	}
+
+	// check if the string matches the 'YYYY-MM-DD HH:MM:SS' datetime format
+	datetimeRegexp = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$`)
+	if datetimeRegexp.MatchString(s) {
+		return "DATETIME2"
+	}
+
+	// check if the string matches the 'HH:MM:SS' time format
+	timeRegexp := regexp.MustCompile(`^\d{2}:\d{2}:\d{2}$`)
+	if timeRegexp.MatchString(s) {
+		return "TIME"
+	}
+
+	// check if the string matches the 'YYYY' year format
+	yearRegexp := regexp.MustCompile(`^\d{4}$`)
+	if yearRegexp.MatchString(s) {
+		return "YEAR"
+	}
+	// if none of the above checks passed, return TEXT as the default data type
+	return "TEXT"
 }
