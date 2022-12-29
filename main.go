@@ -45,8 +45,8 @@ func (mycli *MyClient) eventHandler(evt interface{}) {
 		newMessage := v.Message
 		msg := newMessage.GetConversation()
 		fmt.Println("Message from:", v.Info.Sender.User, "->", msg)
-		if msg == "" {
-			//	return
+		if msg == "" && v.Message.DocumentMessage == nil {
+			return
 		}
 		if v.Message.DocumentMessage != nil {
 			document := v.Message.GetDocumentMessage()
@@ -69,11 +69,13 @@ func (mycli *MyClient) eventHandler(evt interface{}) {
 				if exts[0] == ".csv" {
 					log.Printf("Downloaing file")
 					tableDefinition := uploadTable(v.Info.ID)
-					msg = "SQL Table definition is " + tableDefinition.creation
+					msg = "I created a table with this definition: " + tableDefinition.creation + "\nI will ask you some questions about it."
 				} else {
 					return
 				}
 			}
+		} else {
+			msg = msg + " mysql query"
 		}
 
 		responseData := talkToGPT(msg)
@@ -202,7 +204,7 @@ func executeQuery(query string) string {
 	if err != nil {
 		panic(err.Error())
 	}
-	return string(count)
+	return fmt.Sprintf("%d", count)
 }
 
 func execSql(deletion string, creation string, insertion string, values [][]string) {
@@ -213,10 +215,13 @@ func execSql(deletion string, creation string, insertion string, values [][]stri
 	}
 	defer db.Close()
 
+	fmt.Println("Deletion: " + deletion)
 	_, err = db.Exec(deletion)
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println("Creation: " + creation)
+
 	_, err = db.Exec(creation)
 	if err != nil {
 		panic(err)

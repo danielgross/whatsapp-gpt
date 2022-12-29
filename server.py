@@ -6,6 +6,7 @@ import flask
 import sys
 from flask import Flask, jsonify
 import json
+import re
 
 from flask import g
 
@@ -62,17 +63,16 @@ def get_last_message():
 
 def get_last_code():
     """Get the latest message"""
-    page_elements = PAGE.query_selector_all("code.language-sql")
-    if (len(page_elements) > 1):
-        print("CODE ELEMENT 0:" + page_elements[0])
-        print("CODE ELEMENT 1:" + page_elements[1])
-        print("CODE ELEMENT 2:" + page_elements[2])
-        last_element = page_elements[-2]
-    elif (len(page_elements) > 0):
-        last_element = page_elements[-1]
+    page_elements = PAGE.query_selector_all(".flex.flex-col.items-center > div")
+    last_element = page_elements[-2]
+    pattern = r"^Copy code$\n(?P<lines>(?P<line>.+$\n)+)"
+
+    match = re.search(pattern, last_element.inner_text(), re.MULTILINE)
+    if match:
+        lines = match.group("lines")
+        return lines
     else:
-        return ""
-    return last_element.inner_text()
+        return
 
 @APP.route("/chat", methods=["GET"])
 def chat():
