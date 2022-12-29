@@ -82,7 +82,7 @@ func (mycli *MyClient) eventHandler(evt interface{}) {
 		var response *waProto.Message
 		if responseData.Code != "" {
 			sqlResult := executeQuery(responseData.Code)
-			response = &waProto.Message{Conversation: proto.String(sqlResult)}
+			response = &waProto.Message{Conversation: proto.String(strings.Join(sqlResult, "\n"))}
 		} else {
 			response = &waProto.Message{Conversation: proto.String(responseData.Response)}
 		}
@@ -190,7 +190,7 @@ func main() {
 	client.Disconnect()
 }
 
-func executeQuery(query string) string {
+func executeQuery(query string) []string {
 	db, err := sql.Open("mysql", "tripactions:prodActive00@tcp(127.0.0.1:3306)/gpt")
 	if err != nil {
 		panic(err)
@@ -198,13 +198,32 @@ func executeQuery(query string) string {
 	defer db.Close()
 
 	// Execute the query
-	var count int
 	fmt.Println("QUERY: " + query)
-	err = db.QueryRow(query).Scan(&count)
+	rows, err := db.Query(query)
 	if err != nil {
 		panic(err.Error())
 	}
-	return fmt.Sprintf("%d", count)
+	defer rows.Close()
+	var result []string
+
+	cols, err := rows.Columns()
+	header := strings.Join(cols, ",")
+	result = append(result, header)
+	result = append(result, strings.Repeat("-", len(header)))
+
+	pointers := make([]interface{}, len(cols))
+	container := make([]string, len(cols))
+
+	// Iterate over the rows and print the results
+
+	for i, _ := range pointers {
+		pointers[i] = &container[i]
+	}
+	for rows.Next() {
+		rows.Scan(pointers...)
+		result = append(result, strings.Join(container, ", "))
+	}
+	return result
 }
 
 func execSql(deletion string, creation string, insertion string, values [][]string) {
@@ -273,6 +292,15 @@ func convert(columnType string, value string) string {
 	if columnType == "DATETIME2" {
 		value = strings.Replace(value, "T", " ", 1)
 		value = strings.Replace(value, "Z", "", 1)
+	}
+	if columnType == "BOOLEAN" {
+		lower := strings.ToLower(value)
+		if lower == "true" || lower == "t" {
+			value = fmt.Sprintf("%d", 1)
+		}
+		if lower == "false" || lower == "f" {
+			value = fmt.Sprintf("%d", 0)
+		}
 	}
 	return value
 }
