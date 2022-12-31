@@ -74,29 +74,53 @@ func (mycli *MyClient) eventHandler(evt interface{}) {
 					return
 				}
 			}
-		} else {
-			msg = msg + " mysql query"
 		}
 
-		responseData := talkToGPT(msg)
-		var response *waProto.Message
-		if responseData.Code != "" {
-			sqlResult := executeQuery(responseData.Code)
-			response = &waProto.Message{Conversation: proto.String(strings.Join(sqlResult, "\n"))}
-		} else {
-			response = &waProto.Message{Conversation: proto.String(responseData.Response)}
-		}
-		fmt.Println("Response:", response)
-
-		user := v.Info.Sender.User
-		server := types.DefaultUserServer
-		if v.Info.IsGroup {
-			user = v.Info.Chat.User
-			server = types.GroupServer
-		}
-		mycli.WAClient.SendMessage(context.Background(), types.NewJID(user, server), "", response)
+		response := sqlQueryFlow(msg)
+		sendToWhatsapp(mycli, v.Info, response)
 	}
 }
+func sqlQueryFlow(msg string) string {
+	// Ask GPT for SQL.
+	responseData := talkToGPT(msg + " mysql query that would give the best and clear result")
+	if responseData.Code == "" {
+		return responseData.Response
+	}
+	sqlResult := executeQuery(responseData.Code)
+	response := strings.Join(sqlResult, "\n")
+
+	// Ask for nicer answer
+	nicerAnswerReq := fmt.Sprintf("For the question: \"%s\" the answer was: \"%s\", what is the best way to give an answer to a human, so he will understand the answer in the right context? write one good answer surrounded with {}", msg, response)
+	responseData = talkToGPT(nicerAnswerReq)
+	response = getNicerAnswer(responseData.Response)
+	return response
+}
+
+func getNicerAnswer(response string) string {
+	re := regexp.MustCompile(`(?s){(?P<answer>.*)}`)
+
+	// Match the regular expression against a string
+	matches := re.FindStringSubmatch(response)
+
+	// Get the value captured by the named group "value"
+	nicerAnswer := matches[1]
+	return nicerAnswer
+}
+
+func sendToWhatsapp(mycli *MyClient, info types.MessageInfo, message string) {
+	fmt.Println("Response to Whatsapp: ", message)
+
+	response := &waProto.Message{Conversation: proto.String(message)}
+
+	user := info.Sender.User
+	server := types.DefaultUserServer
+	if info.IsGroup {
+		user = info.Chat.User
+		server = types.GroupServer
+	}
+	mycli.WAClient.SendMessage(context.Background(), types.NewJID(user, server), "", response)
+}
+
 func talkToGPT(message string) ResponseData {
 	var data ResponseData
 	// Make a http request to localhost:5001/chat?q= with the message, and send the response
@@ -207,9 +231,9 @@ func executeQuery(query string) []string {
 	var result []string
 
 	cols, err := rows.Columns()
-	header := strings.Join(cols, ",")
-	result = append(result, header)
-	result = append(result, strings.Repeat("-", len(header)))
+	//header := strings.Join(cols, ",")
+	//result = append(result, header)
+	//result = append(result, strings.Repeat("-", len(header)))
 
 	pointers := make([]interface{}, len(cols))
 	container := make([]string, len(cols))
