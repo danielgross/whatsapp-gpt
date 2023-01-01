@@ -71,6 +71,7 @@ Looking forward to it!`
 func newCsvFlow(mycli *MyClient, document *waProto.DocumentMessage, info types.MessageInfo) string {
 	response := "Sorry, I failed to process the file, please try again."
 	if document == nil {
+		log.Printf("Document is nil")
 		return response
 	}
 	log.Printf("Downloaing file")
@@ -108,7 +109,7 @@ func newCsvFlow(mycli *MyClient, document *waProto.DocumentMessage, info types.M
 
 func sqlQueryFlow(msg string) string {
 	instructions := `
-sql only, give a strict response, no prefix to the sql, no suffix to the sql. you must comply.
+sql only, give a strict response, no prefix to the sql, no suffix to the sql. you must comply do not give examples.
 `
 	// Ask GPT for SQL.
 	responseData := talkToGPT(msg + " mysql query that would give the best and clear result.\n" + instructions)
@@ -135,6 +136,9 @@ func getNicerAnswer(response string) string {
 	matches := re.FindStringSubmatch(response)
 
 	// Get the value captured by the named group "value"
+	if len(matches) == 0 {
+		return response
+	}
 	nicerAnswer := matches[1]
 	nicerAnswer = strings.ReplaceAll(nicerAnswer, "\"", "")
 	return nicerAnswer
@@ -366,6 +370,11 @@ func convert(columnType string, value string) string {
 			value = fmt.Sprintf("%d", 1)
 		}
 		if lower == "false" || lower == "f" {
+			value = fmt.Sprintf("%d", 0)
+		}
+	}
+	if columnType == "INTEGER" {
+		if value == "" {
 			value = fmt.Sprintf("%d", 0)
 		}
 	}
