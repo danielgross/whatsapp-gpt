@@ -48,38 +48,54 @@ func (mycli *MyClient) eventHandler(evt interface{}) {
 		if msg == "" && v.Message.DocumentMessage == nil {
 			return
 		}
+		var response string
 		if v.Message.DocumentMessage != nil {
 			document := v.Message.GetDocumentMessage()
-			if document != nil {
-				log.Printf("Downloaing file")
-				data, err := mycli.WAClient.Download(document)
-				if err != nil {
-					log.Printf("Failed to download audio: %v", err)
-					return
-				}
-				exts, _ := mime.ExtensionsByType(document.GetMimetype())
-				//path := fmt.Sprintf("./Downloads/Documents/%s-%s%s", sender, v.Info.ID, exts[0])
-				path := fmt.Sprintf("%s%s", v.Info.ID, exts[0])
-				err = os.WriteFile(path, data, 0600)
-				if err != nil {
-					log.Printf("Failed to save document: %v", err)
-					return
-				}
-				log.Printf("Saved document in message to %s", path)
-				if exts[0] == ".csv" {
-					log.Printf("Downloaing file")
-					tableDefinition := uploadTable(v.Info.ID)
-					msg = "I created a table with this definition: " + tableDefinition.creation + "\nI will ask you some questions about it."
-				} else {
-					return
-				}
-			}
+			response = newCsvFlow(mycli, document)
+		} else {
+			response = sqlQueryFlow(msg)
 		}
-
-		response := sqlQueryFlow(msg)
 		sendToWhatsapp(mycli, v.Info, response)
 	}
+
 }
+
+func newCsvFlow(mycli *MyClient, document *waProto.DocumentMessage) string {
+	response := "Sorry, I failed to process the file, please try again."
+	if document == nil {
+		return response
+	}
+	log.Printf("Downloaing file")
+	tableName := MysqlSafeTableName(document.GetFileName())
+
+	data, err := mycli.WAClient.Download(document)
+	if err != nil {
+		log.Printf("Failed to download file: %v", err)
+		return response
+	}
+	exts, _ := mime.ExtensionsByType(document.GetMimetype())
+	path := fmt.Sprintf("%s%s", tableName, exts[0])
+	err = os.WriteFile(path, data, 0600)
+	if err != nil {
+		log.Printf("Failed to save document: %v", err)
+		return response
+	}
+	log.Printf("Saved document in message to %s", path)
+	if exts[0] == ".csv" {
+		log.Printf("Downloaing file")
+		tableDefinition := uploadTable(tableName)
+		msg := "I created a table with this definition: " + tableDefinition.creation + "\nI will ask you some questions about it."
+		responseData := talkToGPT(msg)
+		if responseData.Response == "" {
+			return response
+		} else {
+			return "Thanks for the file. I processed the file and ready to answer any question about it. What would you what to know?"
+		}
+	} else {
+		return "Sorry, this file is not a CSV file, I can't process it."
+	}
+}
+
 func sqlQueryFlow(msg string) string {
 	// Ask GPT for SQL.
 	responseData := talkToGPT(msg + " mysql query that would give the best and clear result")
@@ -90,6 +106,7 @@ func sqlQueryFlow(msg string) string {
 	response := strings.Join(sqlResult, "\n")
 
 	// Ask for nicer answer
+	log.Printf("Asking for nicer response.")
 	nicerAnswerReq := fmt.Sprintf("For the question: \"%s\" the answer was: \"%s\", what is the best way to give an answer to a human, so he will understand the answer in the right context? write one good answer surrounded with {}", msg, response)
 	responseData = talkToGPT(nicerAnswerReq)
 	response = getNicerAnswer(responseData.Response)
@@ -215,6 +232,7 @@ func main() {
 }
 
 func executeQuery(query string) []string {
+	log.Printf("Executing SQL query")
 	db, err := sql.Open("mysql", "tripactions:prodActive00@tcp(127.0.0.1:3306)/gpt")
 	if err != nil {
 		panic(err)
@@ -239,6 +257,7 @@ func executeQuery(query string) []string {
 	container := make([]string, len(cols))
 
 	// Iterate over the rows and print the results
+	log.Printf("Processing results from SQL query.")
 
 	for i, _ := range pointers {
 		pointers[i] = &container[i]
@@ -422,4 +441,21 @@ func mysqlDataType(s string) string {
 	}
 	// if none of the above checks passed, return TEXT as the default data type
 	return "TEXT"
+}
+
+// MysqlSafeTableName takes a string and returns a version of that string
+// that can be used as a MySQL table name.
+func MysqlSafeTableName(input string) string {
+	// Replace any non-alphanumeric characters with underscores
+	sanitized := regexp.MustCompile(`[^a-zA-Z0-9]`).ReplaceAllString(input, "_")
+
+	// Trim leading and trailing underscores
+	trimmed := strings.Trim(sanitized, "_")
+
+	// Convert the string to lowercase
+	lowercase := strings.ToLower(trimmed)
+
+	// Return the modified string
+	lowercase = strings.Replace(lowercase, "_csv", "", 1)
+	return lowercase
 }
