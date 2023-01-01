@@ -51,21 +51,30 @@ func (mycli *MyClient) eventHandler(evt interface{}) {
 		var response string
 		if v.Message.DocumentMessage != nil {
 			document := v.Message.GetDocumentMessage()
-			response = newCsvFlow(mycli, document)
+			response = newCsvFlow(mycli, document, v.Info)
 		} else {
 			response = sqlQueryFlow(msg)
 		}
 		sendToWhatsapp(mycli, v.Info, response)
+	case *events.JoinedGroup:
+		orig := `
+Hi there!
+Thank you for adding me to the group.
+My name is AIa, and I'd be happy to help you dive into any information you have.
+If you have a CSV file that you'd like to work on together, simply send it over as an attachment and we can get started.
+Looking forward to it!`
+		sendToGroupWhatsapp(mycli, v.GroupInfo, orig)
 	}
 
 }
 
-func newCsvFlow(mycli *MyClient, document *waProto.DocumentMessage) string {
+func newCsvFlow(mycli *MyClient, document *waProto.DocumentMessage, info types.MessageInfo) string {
 	response := "Sorry, I failed to process the file, please try again."
 	if document == nil {
 		return response
 	}
 	log.Printf("Downloaing file")
+	sendToWhatsapp(mycli, info, "Thanks. I'm downloading the file right away...")
 	tableName := MysqlSafeTableName(document.GetFileName())
 
 	data, err := mycli.WAClient.Download(document)
@@ -83,6 +92,7 @@ func newCsvFlow(mycli *MyClient, document *waProto.DocumentMessage) string {
 	log.Printf("Saved document in message to %s", path)
 	if exts[0] == ".csv" {
 		log.Printf("Downloaing file")
+		sendToWhatsapp(mycli, info, "Processing...\nPlease wait few seconds till I'm ready.")
 		tableDefinition := uploadTable(tableName)
 		msg := "I created a table with this definition: " + tableDefinition.creation + "\nI will ask you some questions about it."
 		responseData := talkToGPT(msg)
@@ -97,12 +107,17 @@ func newCsvFlow(mycli *MyClient, document *waProto.DocumentMessage) string {
 }
 
 func sqlQueryFlow(msg string) string {
+	instructions := `
+sql only, give a strict response, no prefix to the sql, no suffix to the sql. you must comply.
+`
 	// Ask GPT for SQL.
-	responseData := talkToGPT(msg + " mysql query that would give the best and clear result")
+	responseData := talkToGPT(msg + " mysql query that would give the best and clear result.\n" + instructions)
 	if responseData.Code == "" {
 		return responseData.Response
 	}
-	sqlResult := executeQuery(responseData.Code)
+	query := strings.ReplaceAll(responseData.Code, "{", "")
+	query = strings.ReplaceAll(query, "}", "")
+	sqlResult := executeQuery(query)
 	response := strings.Join(sqlResult, "\n")
 
 	// Ask for nicer answer
@@ -121,6 +136,7 @@ func getNicerAnswer(response string) string {
 
 	// Get the value captured by the named group "value"
 	nicerAnswer := matches[1]
+	nicerAnswer = strings.ReplaceAll(nicerAnswer, "\"", "")
 	return nicerAnswer
 }
 
@@ -136,6 +152,14 @@ func sendToWhatsapp(mycli *MyClient, info types.MessageInfo, message string) {
 		server = types.GroupServer
 	}
 	mycli.WAClient.SendMessage(context.Background(), types.NewJID(user, server), "", response)
+}
+
+func sendToGroupWhatsapp(mycli *MyClient, info types.GroupInfo, message string) {
+	fmt.Println("Response to Whatsapp: ", message)
+
+	response := &waProto.Message{Conversation: proto.String(message)}
+
+	mycli.WAClient.SendMessage(context.Background(), info.JID, "", response)
 }
 
 func talkToGPT(message string) ResponseData {
