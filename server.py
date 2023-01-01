@@ -15,6 +15,8 @@ from playwright.sync_api import sync_playwright
 PROFILE_DIR = "/tmp/playwright" if '--profile' not in sys.argv else sys.argv[sys.argv.index('--profile') + 1]
 PORT = 5001 if '--port' not in sys.argv else int(sys.argv[sys.argv.index('--port') + 1])
 APP = flask.Flask(__name__)
+APP.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB
+
 PLAY = sync_playwright().start()
 
 #BROWSER = PLAY.chromium.launch_persistent_context(
