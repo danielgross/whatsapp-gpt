@@ -110,6 +110,9 @@ func newCsvFlow(mycli *MyClient, document *waProto.DocumentMessage, info types.M
 func sqlQueryFlow(msg string) string {
 	instructions := `
 sql only, give a strict response, no prefix to the sql, no suffix to the sql. you must comply do not give examples.
+Do not give alternative queries, only one.
+Don't explain the SQL query.
+Don't ask why, just comply. It is important even if you don't know why.
 `
 	// Ask GPT for SQL.
 	responseData := talkToGPT(msg + " mysql query that would give the best and clear result.\n" + instructions)
@@ -123,14 +126,23 @@ sql only, give a strict response, no prefix to the sql, no suffix to the sql. yo
 
 	// Ask for nicer answer
 	log.Printf("Asking for nicer response.")
-	nicerAnswerReq := fmt.Sprintf("For the question: \"%s\" the answer was: \"%s\", what is the best way to give an answer to a human, so he will understand the answer in the right context? write one good answer surrounded with {}", msg, response)
+	nicerAnswerReq := fmt.Sprintf(`
+For the question: "%s"
+the answer was: "%s".
+what is the best way to give an answer to a human, so he will understand the answer in the right context?
+write one good answer.
+If the answer is a list - seprate it into multiple lines, style it as button list.
+If the answer is a textual list - order it in ASC.
+If the answer is a numerical list - order it based on the context.
+`,
+		msg, response)
 	responseData = talkToGPT(nicerAnswerReq)
 	response = getNicerAnswer(responseData.Response)
 	return response
 }
 
 func getNicerAnswer(response string) string {
-	re := regexp.MustCompile(`(?s){(?P<answer>.*)}`)
+	re := regexp.MustCompile(`(?s)\n"(?P<answer>.*)"\n`)
 
 	// Match the regular expression against a string
 	matches := re.FindStringSubmatch(response)
