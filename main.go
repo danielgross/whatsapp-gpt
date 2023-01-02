@@ -35,6 +35,11 @@ type MyClient struct {
 	eventHandlerID uint32
 }
 
+type ExistingSchema struct {
+	schema []string
+	tables []string
+}
+
 func (mycli *MyClient) register() {
 	mycli.eventHandlerID = mycli.WAClient.AddEventHandler(mycli.eventHandler)
 }
@@ -64,8 +69,17 @@ My name is AIa, and I'd be happy to help you dive into any information you have.
 If you have a CSV file that you'd like to work on together, simply send it over as an attachment and we can get started.
 Looking forward to it!`
 		sendToGroupWhatsapp(mycli, v.GroupInfo, orig)
-	}
+		schema := getSchema("gpt")
 
+		if len(schema.tables) > 0 {
+			talkToGPT(fmt.Sprintf(`This is the existing schema of the mysql database:
+%s
+`, strings.Join(schema.schema, "\n"),
+			))
+			message := fmt.Sprintf("This is the list of existing data you already have:\n%s\n", strings.Join(schema.tables, "\n"))
+			sendToGroupWhatsapp(mycli, v.GroupInfo, message)
+		}
+	}
 }
 
 func newCsvFlow(mycli *MyClient, document *waProto.DocumentMessage, info types.MessageInfo) string {
@@ -117,7 +131,10 @@ Don't ask why, just comply. It is important even if you don't know why.
 	// Ask GPT for SQL.
 	responseData := talkToGPT(msg + " mysql query that would give the best and clear result.\n" + instructions)
 	if responseData.Code == "" {
-		return responseData.Response
+		if !strings.HasPrefix(responseData.Response, "SELECT ") {
+			return responseData.Response
+		}
+		responseData.Code = responseData.Response
 	}
 	query := strings.ReplaceAll(responseData.Code, "{", "")
 	query = strings.ReplaceAll(query, "}", "")
@@ -131,7 +148,7 @@ For the question: "%s"
 the answer was: "%s".
 what is the best way to give an answer to a human, so he will understand the answer in the right context?
 write one good answer.
-If the answer is a list - seprate it into multiple lines, style it as button list.
+If the answer is a list - seprate it into multiple lines, style it as bulleted list.
 If the answer is a textual list - order it in ASC.
 If the answer is a numerical list - order it based on the context.
 `,
@@ -503,4 +520,56 @@ func MysqlSafeTableName(input string) string {
 	// Return the modified string
 	lowercase = strings.Replace(lowercase, "_csv", "", 1)
 	return lowercase
+}
+
+func getSchema(schemaName string) ExistingSchema {
+	var schema ExistingSchema
+	// Connect to the database
+	db, err := sql.Open("mysql", "tripactions:prodActive00@tcp(127.0.0.1:3306)/"+schemaName)
+	if err != nil {
+		fmt.Println(err)
+		return schema
+	}
+	defer db.Close()
+
+	// Query the information_schema database to get the table names
+	rows, err := db.Query("SELECT table_name FROM information_schema.tables WHERE table_schema = \"" + schemaName + "\"")
+	if err != nil {
+		fmt.Println(err)
+		return schema
+	}
+	defer rows.Close()
+
+	// Iterate through the table names and show the create table statement for each table
+	for rows.Next() {
+		var tableName string
+		if err := rows.Scan(&tableName); err != nil {
+			fmt.Println(err)
+			return schema
+		}
+		fmt.Println("Table:", tableName)
+		schema.tables = append(schema.tables, tableName)
+
+		// Use the SHOW CREATE TABLE statement to get the create table statement for the current table
+		createTableStmt, err := db.Query("SHOW CREATE TABLE " + tableName)
+		if err != nil {
+			fmt.Println(err)
+			return schema
+		}
+		defer createTableStmt.Close()
+
+		for createTableStmt.Next() {
+			var _, createTableSQL string
+			if err := createTableStmt.Scan(&tableName, &createTableSQL); err != nil {
+				fmt.Println(err)
+				return schema
+			}
+			schema.schema = append(schema.schema, createTableSQL)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		fmt.Println(err)
+		return schema
+	}
+	return schema
 }
