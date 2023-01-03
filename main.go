@@ -72,12 +72,20 @@ Looking forward to it!`
 		schema := getSchema("gpt")
 
 		if len(schema.tables) > 0 {
+			message := fmt.Sprintf("This is the list of existing data you already have:\n%s\n%s\n",
+				strings.Join(schema.tables, "\n"),
+				"Let me process this...",
+			)
+			sendToGroupWhatsapp(mycli, v.GroupInfo, message)
+
 			talkToGPT(fmt.Sprintf(`This is the existing schema of the mysql database:
 %s
+%s
 `, strings.Join(schema.schema, "\n"),
+				"Please just say UNDERSTOOOD if all clear or NOT SURE if something is not clear",
 			))
-			message := fmt.Sprintf("This is the list of existing data you already have:\n%s\n", strings.Join(schema.tables, "\n"))
-			sendToGroupWhatsapp(mycli, v.GroupInfo, message)
+			sendToGroupWhatsapp(mycli, v.GroupInfo, "I'm ready.")
+
 		}
 	}
 }
@@ -124,6 +132,7 @@ func newCsvFlow(mycli *MyClient, document *waProto.DocumentMessage, info types.M
 func sqlQueryFlow(msg string) string {
 	instructions := `
 sql only, give a strict response, no prefix to the sql, no suffix to the sql. you must comply do not give examples.
+When the result involves a list, include a string key for each value, don't just return numbers.'
 Do not give alternative queries, only one.
 Don't explain the SQL query.
 Don't ask why, just comply. It is important even if you don't know why.
@@ -147,7 +156,7 @@ Don't ask why, just comply. It is important even if you don't know why.
 For the question: "%s"
 the answer was: "%s".
 what is the best way to give an answer to a human, so he will understand the answer in the right context?
-write one good answer.
+write one good answer. Give an answer as if you are a support agent answering a question to a user.
 If the answer is a list - seprate it into multiple lines, style it as bulleted list.
 If the answer is a textual list - order it in ASC.
 If the answer is a numerical list - order it based on the context.
