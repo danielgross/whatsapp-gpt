@@ -73,9 +73,12 @@ func (mycli *MyClient) eventHandler(evt interface{}) {
 
 				talkToGPT(fmt.Sprintf(`This is the existing schema of the snowflake database:
 %s
-%s
+if there is a question about users, build a query around STG_MYSQL_PROD_TRIPACTIONS.USER table
+if there is a question about companies, build a query around STG_MYSQL_PROD_TRIPACTIONS.COMPANY table  
+if there is a question about trips, build a query around STG_MYSQL_PROD_TRIPACTIONS.TRIPS table  
+if there is a question about bookins, build a query around STG_MYSQL_PROD_TRIPACTIONS.BOOKING table
+Please just say UNDERSTOOOD if all clear or NOT SURE if something is not clear
 `, strings.Join(schema.schema, "\n"),
-					"Please just say UNDERSTOOOD if all clear or NOT SURE if something is not clear",
 				))
 				sendToWhatsapp(mycli, v.Info, "I'm ready.")
 				return
@@ -134,8 +137,9 @@ You are welcome to ask about them.
 
 func sqlQueryFlow(msg string) string {
 	instructions := `
-sql only, give a strict response, no prefix to the sql, no suffix to the sql. you must comply do not give examples.
-When the result involves a list, include a string key for each value, don't just return numbers.'
+sql only that works on snowflake, give a strict response, no prefix to the sql, no suffix to the sql. you must comply do not give examples.
+When the result involves a list, include a string key for each value, don't just return numbers.
+Don't use the INTERVAL saved word - it does not work with snowflake!!!
 Do not give alternative queries, only one.
 Don't explain the SQL query.
 Don't ask why, just comply. It is important even if you don't know why.
