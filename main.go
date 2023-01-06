@@ -28,6 +28,16 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+func getConfig() gosnowflake.Config {
+	return gosnowflake.Config{
+		Account:   "XXXX",
+		User:      "XXX",
+		Password:  "XXX",
+		Database:  "xxx",
+		Warehouse: "xxx",
+	}
+}
+
 type MyClient struct {
 	WAClient       *whatsmeow.Client
 	eventHandlerID uint32
