@@ -3,24 +3,22 @@ package main
 import (
 	"context"
 	"database/sql"
-	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	"io"
 	"log"
-	"mime"
 	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
 	"regexp"
-	"strconv"
 	"strings"
 	"syscall"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/mdp/qrterminal/v3"
+	"github.com/snowflakedb/gosnowflake"
 	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/store/sqlstore"
@@ -54,9 +52,24 @@ func (mycli *MyClient) eventHandler(evt interface{}) {
 			return
 		}
 		var response string
-		if v.Message.DocumentMessage != nil {
-			document := v.Message.GetDocumentMessage()
-			response = newCsvFlow(mycli, document, v.Info)
+		if msg == "/schema" {
+			schema := getSchema()
+			if len(schema.tables) > 0 {
+				message := fmt.Sprintf("This is the list of existing data you already have:\n%s\n%s\n",
+					strings.Join(schema.tables, "\n"),
+					"Let me process this...",
+				)
+				sendToWhatsapp(mycli, v.Info, message)
+
+				talkToGPT(fmt.Sprintf(`This is the existing schema of the snowflake database:
+%s
+%s
+`, strings.Join(schema.schema, "\n"),
+					"Please just say UNDERSTOOOD if all clear or NOT SURE if something is not clear",
+				))
+				sendToWhatsapp(mycli, v.Info, "I'm ready.")
+				return
+			}
 		} else {
 			response = sqlQueryFlow(msg)
 		}
@@ -69,7 +82,7 @@ My name is AIa, and I'd be happy to help you dive into any information you have.
 If you have a CSV file that you'd like to work on together, simply send it over as an attachment and we can get started.
 Looking forward to it!`
 		sendToGroupWhatsapp(mycli, v.GroupInfo, orig)
-		schema := getSchema("gpt")
+		schema := getSchema()
 
 		if len(schema.tables) > 0 {
 			message := fmt.Sprintf("This is the list of existing data you already have:\n%s\n%s\n",
@@ -78,7 +91,7 @@ Looking forward to it!`
 			)
 			sendToGroupWhatsapp(mycli, v.GroupInfo, message)
 
-			talkToGPT(fmt.Sprintf(`This is the existing schema of the mysql database:
+			talkToGPT(fmt.Sprintf(`This is the existing schema of the snowflake database:
 %s
 %s
 `, strings.Join(schema.schema, "\n"),
@@ -90,42 +103,22 @@ Looking forward to it!`
 	}
 }
 
-func newCsvFlow(mycli *MyClient, document *waProto.DocumentMessage, info types.MessageInfo) string {
-	response := "Sorry, I failed to process the file, please try again."
-	if document == nil {
-		log.Printf("Document is nil")
-		return response
-	}
-	log.Printf("Downloaing file")
-	sendToWhatsapp(mycli, info, "Thanks. I'm downloading the file right away...")
-	tableName := MysqlSafeTableName(document.GetFileName())
+func notifyExistingData(mycli *MyClient, info types.MessageInfo, userName string) {
+	schema := getSchema()
 
-	data, err := mycli.WAClient.Download(document)
-	if err != nil {
-		log.Printf("Failed to download file: %v", err)
-		return response
-	}
-	exts, _ := mime.ExtensionsByType(document.GetMimetype())
-	path := fmt.Sprintf("%s%s", tableName, exts[0])
-	err = os.WriteFile(path, data, 0600)
-	if err != nil {
-		log.Printf("Failed to save document: %v", err)
-		return response
-	}
-	log.Printf("Saved document in message to %s", path)
-	if exts[0] == ".csv" {
-		log.Printf("Downloaing file")
-		sendToWhatsapp(mycli, info, "Processing...\nPlease wait few seconds till I'm ready.")
-		tableDefinition := uploadTable(tableName)
-		msg := "I created a table with this definition: " + tableDefinition.creation + "\nI will ask you some questions about it."
-		responseData := talkToGPT(msg)
-		if responseData.Response == "" {
-			return response
-		} else {
-			return "Thanks for the file. I processed the file and ready to answer any question about it. What would you what to know?"
-		}
-	} else {
-		return "Sorry, this file is not a CSV file, I can't process it."
+	if len(schema.tables) > 0 {
+		message := fmt.Sprintf(
+			`
+Welcome %s to the group!
+This is the list of existing data we have:
+%s
+You are welcome to ask about them.
+`,
+			userName,
+			strings.Join(schema.tables, "\n"),
+		)
+		sendToWhatsapp(mycli, info, message)
+		//sendToGroupWhatsapp(mycli, info, message)
 	}
 }
 
@@ -138,9 +131,14 @@ Don't explain the SQL query.
 Don't ask why, just comply. It is important even if you don't know why.
 `
 	// Ask GPT for SQL.
-	responseData := talkToGPT(msg + " mysql query that would give the best and clear result.\n" + instructions)
+	responseData := talkToGPT(msg + " snowflake query that would give the best and clear result.\n" + instructions)
 	if responseData.Code == "" {
-		if !strings.HasPrefix(responseData.Response, "SELECT ") {
+		if strings.HasPrefix(responseData.Response, "\"") && strings.HasSuffix(responseData.Response, "\"") {
+			responseData.Response = responseData.Response[1 : len(responseData.Response)-1]
+		}
+		if !strings.HasPrefix(responseData.Response, "SELECT ") &&
+			!strings.HasPrefix(responseData.Response, "SHOW ") &&
+			!strings.HasPrefix(responseData.Response, "DESCRIBE ") {
 			return responseData.Response
 		}
 		responseData.Code = responseData.Response
@@ -238,13 +236,6 @@ type ResponseData struct {
 	Code     string `json:"code"`
 }
 
-func uploadTable(name string) TableDefinition {
-	tableDefinition := defineTableByFile(name)
-	insertion := getInsertSQL(name, tableDefinition.types)
-	execSql(tableDefinition.deletion, tableDefinition.creation, tableDefinition.insertion, insertion)
-	return tableDefinition
-}
-
 func main() {
 	dbLog := waLog.Stdout("Database", "DEBUG", true)
 	// Make sure you add appropriate DB connector imports, e.g. github.com/mattn/go-sqlite3 for SQLite
@@ -299,17 +290,27 @@ func main() {
 
 func executeQuery(query string) []string {
 	log.Printf("Executing SQL query")
-	db, err := sql.Open("mysql", "tripactions:prodActive00@tcp(127.0.0.1:3306)/gpt")
+	config := getConfig()
+
+	connStr, err := gosnowflake.DSN(&config)
 	if err != nil {
 		panic(err)
 	}
-	defer db.Close()
+
+	db, err := sql.Open("snowflake", connStr)
+	if err != nil {
+		panic(err)
+	}
 
 	// Execute the query
+	//query = strings.Replace(query, " FROM ", " FROM STG_MYSQL_PROD_TRIPACTIONS.", 1)
+	//query = strings.Replace(query, " FROM STG_MYSQL_PROD_TRIPACTIONS.STG_MYSQL_PROD_TRIPACTIONS.", " FROM STG_MYSQL_PROD_TRIPACTIONS.", 1)
+
 	fmt.Println("QUERY: " + query)
 	rows, err := db.Query(query)
 	if err != nil {
-		panic(err.Error())
+		fmt.Println(err.Error())
+		return []string{"Sorry, there was an issue with retrieving the answer. Please ask it differently."}
 	}
 	defer rows.Close()
 	var result []string
@@ -335,214 +336,21 @@ func executeQuery(query string) []string {
 	return result
 }
 
-func execSql(deletion string, creation string, insertion string, values [][]string) {
-
-	db, err := sql.Open("mysql", "tripactions:prodActive00@tcp(127.0.0.1:3306)/gpt")
-	if err != nil {
-		panic(err)
-	}
-	defer db.Close()
-
-	fmt.Println("Deletion: " + deletion)
-	_, err = db.Exec(deletion)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("Creation: " + creation)
-
-	_, err = db.Exec(creation)
-	if err != nil {
-		panic(err)
-	}
-	for _, rec := range values {
-		args := make([]interface{}, len(rec))
-		for i, v := range rec {
-			args[i] = strings.ReplaceAll(v, "\"", "")
-		}
-
-		query := fmt.Sprintf(insertion, args...)
-		_, err = db.Exec(query)
-		if err != nil {
-			panic(err)
-		}
-	}
-	fmt.Println("SQL executed successfully")
-}
-
-func getInsertSQL(filename string, columnTypes []string) [][]string {
-	file, err := os.Open(filename + ".csv")
-	if err != nil {
-		// handle the error
-	}
-	defer file.Close()
-
-	reader := csv.NewReader(file)
-
-	_, err = reader.Read()
-	if err != nil {
-		// handle the error
-	}
-	content, err := reader.ReadAll()
-	if err != nil {
-		// handle the error
-	}
-	values := [][]string{}
-	for _, line := range content {
-		lineValue := []string{}
-		for i, columnValue := range line {
-			lineValue = append(lineValue, convert(columnTypes[i], columnValue))
-		}
-		values = append(values, lineValue)
-	}
-	return values
-}
-
-func convert(columnType string, value string) string {
-	if columnType == "DATETIME2" {
-		value = strings.Replace(value, "T", " ", 1)
-		value = strings.Replace(value, "Z", "", 1)
-	}
-	if columnType == "BOOLEAN" {
-		lower := strings.ToLower(value)
-		if lower == "true" || lower == "t" {
-			value = fmt.Sprintf("%d", 1)
-		}
-		if lower == "false" || lower == "f" {
-			value = fmt.Sprintf("%d", 0)
-		}
-	}
-	if columnType == "INTEGER" {
-		if value == "" {
-			value = fmt.Sprintf("%d", 0)
-		}
-	}
-	return value
-}
-
-type TableDefinition struct {
-	creation  string
-	deletion  string
-	insertion string
-	types     []string
-}
-
-func defineTableByFile(filename string) TableDefinition {
-	file, err := os.Open(filename + ".csv")
-	if err != nil {
-		// handle the error
-	}
-	defer file.Close()
-
-	reader := csv.NewReader(file)
-	header, err := reader.Read()
-	if err != nil {
-		// handle the error
-	}
-	firstRow, err := reader.Read()
-	if err != nil {
-		// handle the error
-	}
-	var types []string
-	var columnTypes []string
-	var empties []string
-	for i, columnName := range header {
-		columnType := mysqlDataType(firstRow[i])
-		columnTypes = append(columnTypes, columnType)
-		if strings.HasPrefix(columnType, "DATETIME") {
-			types = append(types, columnName+" DATETIME")
-		} else {
-			types = append(types, columnName+" "+columnType)
-		}
-		empties = append(empties, "\"%s\"")
-	}
-	deletion := "DROP TABLE IF EXISTS " + filename + ";"
-	creation := "CREATE TABLE " + filename + " (\n" + strings.Join(types, ",\n") + "\n);"
-	insertion := "INSERT INTO " + filename + " (" + strings.Join(header, ", ") + ") VALUES (" + strings.Join(empties, ", ") + ");"
-	tableDefinition := TableDefinition{deletion: deletion, creation: creation, types: columnTypes, insertion: insertion}
-	return tableDefinition
-}
-
-func mysqlDataType(s string) string {
-	// check if the string can be parsed to an integer
-	_, errInt := strconv.ParseInt(s, 10, 0)
-	if errInt == nil {
-		return "INTEGER"
-	}
-
-	// check if the string can be parsed to a floating-point number
-	_, errFloat := strconv.ParseFloat(s, 64)
-	if errFloat == nil {
-		return "FLOAT"
-	}
-
-	// check if the string can be parsed to a boolean
-	_, errBool := strconv.ParseBool(s)
-	if errBool == nil {
-		return "BOOLEAN"
-	}
-
-	// check if the string matches the 'YYYY-MM-DD' date format
-	dateRegexp := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
-	if dateRegexp.MatchString(s) {
-		return "DATE"
-	}
-
-	// check if the string matches the 'YYYY-MM-DD HH:MM:SS' datetime format
-	datetimeRegexp := regexp.MustCompile(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$`)
-	if datetimeRegexp.MatchString(s) {
-		return "DATETIME"
-	}
-
-	// check if the string matches the 'YYYY-MM-DD HH:MM:SS' datetime format
-	datetimeRegexp = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$`)
-	if datetimeRegexp.MatchString(s) {
-		return "DATETIME2"
-	}
-
-	// check if the string matches the 'HH:MM:SS' time format
-	timeRegexp := regexp.MustCompile(`^\d{2}:\d{2}:\d{2}$`)
-	if timeRegexp.MatchString(s) {
-		return "TIME"
-	}
-
-	// check if the string matches the 'YYYY' year format
-	yearRegexp := regexp.MustCompile(`^\d{4}$`)
-	if yearRegexp.MatchString(s) {
-		return "YEAR"
-	}
-	// if none of the above checks passed, return TEXT as the default data type
-	return "TEXT"
-}
-
-// MysqlSafeTableName takes a string and returns a version of that string
-// that can be used as a MySQL table name.
-func MysqlSafeTableName(input string) string {
-	// Replace any non-alphanumeric characters with underscores
-	sanitized := regexp.MustCompile(`[^a-zA-Z0-9]`).ReplaceAllString(input, "_")
-
-	// Trim leading and trailing underscores
-	trimmed := strings.Trim(sanitized, "_")
-
-	// Convert the string to lowercase
-	lowercase := strings.ToLower(trimmed)
-
-	// Return the modified string
-	lowercase = strings.Replace(lowercase, "_csv", "", 1)
-	return lowercase
-}
-
-func getSchema(schemaName string) ExistingSchema {
+func getSchema() ExistingSchema {
 	var schema ExistingSchema
-	// Connect to the database
-	db, err := sql.Open("mysql", "tripactions:prodActive00@tcp(127.0.0.1:3306)/"+schemaName)
-	if err != nil {
-		fmt.Println(err)
-		return schema
-	}
-	defer db.Close()
+	config := getConfig()
 
-	// Query the information_schema database to get the table names
-	rows, err := db.Query("SELECT table_name FROM information_schema.tables WHERE table_schema = \"" + schemaName + "\"")
+	connStr, err := gosnowflake.DSN(&config)
+	if err != nil {
+		panic(err)
+	}
+
+	db, err := sql.Open("snowflake", connStr)
+	if err != nil {
+		panic(err)
+	}
+
+	rows, err := db.Query("SELECT TABLE_NAME, TABLE_SCHEMA FROM information_schema.tables")
 	if err != nil {
 		fmt.Println(err)
 		return schema
@@ -552,27 +360,43 @@ func getSchema(schemaName string) ExistingSchema {
 	// Iterate through the table names and show the create table statement for each table
 	for rows.Next() {
 		var tableName string
-		if err := rows.Scan(&tableName); err != nil {
+		var schemaName string
+
+		if err := rows.Scan(&tableName, &schemaName); err != nil {
 			fmt.Println(err)
 			return schema
 		}
+		if schemaName != "STG_MYSQL_PROD_TRIPACTIONS" {
+			continue
+		}
 		fmt.Println("Table:", tableName)
-		schema.tables = append(schema.tables, tableName)
+		tables := []string{"TRIPS", "BOOKING", "NPS", "USER", "COMPANY"}
+		use := false
+		for _, t := range tables {
+			if tableName == t {
+				use = true
+			}
+		}
+		if !use {
+			continue
+		}
 
 		// Use the SHOW CREATE TABLE statement to get the create table statement for the current table
-		createTableStmt, err := db.Query("SHOW CREATE TABLE " + tableName)
+		createTableStmt, err := db.Query("SELECT GET_DDL('TABLE', '" + schemaName + "." + tableName + "')")
 		if err != nil {
 			fmt.Println(err)
-			return schema
+			continue
 		}
 		defer createTableStmt.Close()
 
 		for createTableStmt.Next() {
 			var _, createTableSQL string
-			if err := createTableStmt.Scan(&tableName, &createTableSQL); err != nil {
+			if err := createTableStmt.Scan(&createTableSQL); err != nil {
 				fmt.Println(err)
-				return schema
+				continue
 			}
+			createTableSQL = strings.Replace(createTableSQL, "create or replace TABLE ", "create or replace TABLE "+schemaName+".", 1)
+			schema.tables = append(schema.tables, schemaName+"."+tableName)
 			schema.schema = append(schema.schema, createTableSQL)
 		}
 	}
