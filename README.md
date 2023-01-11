@@ -1,4 +1,4 @@
-# Whatsapp-GPT
+# Whatsapp-GPT :rocket:
 A simple piece of software which connects your whatsapp with chatGPT!
 
 ## Install
