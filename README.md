@@ -9,9 +9,7 @@ First install following libraries,
 
 ```
 $ pip install Flask
-```
 
-```
 $ pip install playwright
 ```
 
