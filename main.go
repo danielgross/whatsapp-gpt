@@ -31,11 +31,11 @@ import (
 
 func getConfig() gosnowflake.Config {
 	return gosnowflake.Config{
-		Account:   "iz80647",
-		User:      "SVC_OPENAI_CONNECT",
-		Password:  "rub!QYE!juz4nzn@rzy",
-		Database:  "staging",
-		Warehouse: "data_Team",
+		Account:   "XXXX",
+		User:      "XXX",
+		Password:  "XXX",
+		Database:  "XXX",
+		Warehouse: "XXX",
 	}
 }
 
