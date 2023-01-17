@@ -1,12 +1,16 @@
 """Make some requests to OpenAI's chatbot"""
 
 import time
-import os 
+import os
 import flask
 import sys
 from flask import Flask, jsonify
 import json
 import re
+import random
+import string
+from gtts import gTTS
+import speech_recognition as sr
 
 from flask import g
 
@@ -57,6 +61,19 @@ def send_message(message):
     while PAGE.query_selector(".result-streaming") is not None:
         time.sleep(0.1)
 
+def get_mp3_file(message):
+    language = 'en'
+    # convert the text response from chatgpt to an audio file
+    audio = gTTS(text=message, lang=language, slow=False, )
+    # save the audio file
+    name = random_file_name() + '.mp3'
+    audio.save(name)
+    return name
+
+def random_file_name(length=8):
+    letters = string.ascii_letters
+    return ''.join(random.choice(letters) for i in range(length))
+
 def get_last_message():
     """Get the latest message"""
     page_elements = PAGE.query_selector_all(".flex.flex-col.items-center > div")
@@ -83,9 +100,25 @@ def chat():
     send_message(message)
     response = get_last_message()
     code = get_last_code()
+    mp3 = get_mp3_file(response)
     data = {
         "code": code,
-        "response": response
+        "response": response,
+        "mp3": mp3
+    }
+    return jsonify(data)
+
+@APP.route("/transcribe", methods=["GET"])
+def transcribe():
+    message = flask.request.args.get("q")
+    print("Sending message: ", message)
+    r = sr.Recognizer()
+    with sr.AudioFile(message) as source:
+        audio_text = r.listen(source)
+        text = r.recognize_google(audio_text)
+        print("The audio file contains: " + text)
+    data = {
+        "response": text
     }
     return jsonify(data)
 
@@ -98,6 +131,6 @@ def start_browser():
         input()
     else:
         print("Logged in")
-        
+
 if __name__ == "__main__":
     start_browser()

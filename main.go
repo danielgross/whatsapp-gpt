@@ -6,16 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
-	"io"
-	"log"
-	"net/http"
-	"net/url"
-	"os"
-	"os/signal"
-	"regexp"
-	"strings"
-	"syscall"
-
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/mdp/qrterminal/v3"
 	"github.com/snowflakedb/gosnowflake"
@@ -26,15 +16,26 @@ import (
 	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
 	"google.golang.org/protobuf/proto"
+	"io"
+	"log"
+	"mime"
+	"net/http"
+	"net/url"
+	"os"
+	"os/exec"
+	"os/signal"
+	"regexp"
+	"strings"
+	"syscall"
 )
 
 func getConfig() gosnowflake.Config {
 	return gosnowflake.Config{
-		Account:   "XXXX",
-		User:      "XXX",
-		Password:  "XXX",
-		Database:  "xxx",
-		Warehouse: "xxx",
+		Account:   "iz80647",
+		User:      "SVC_OPENAI_CONNECT",
+		Password:  "rub!QYE!juz4nzn@rzy",
+		Database:  "staging",
+		Warehouse: "data_Team",
 	}
 }
 
@@ -58,11 +59,40 @@ func (mycli *MyClient) eventHandler(evt interface{}) {
 		newMessage := v.Message
 		msg := newMessage.GetConversation()
 		fmt.Println("Message from:", v.Info.Sender.User, "->", msg)
-		if msg == "" && v.Message.DocumentMessage == nil {
+		if msg == "" && v.Message.DocumentMessage == nil && v.Message.AudioMessage == nil {
 			return
 		}
 		var response string
-		if msg == "/schema" {
+		if v.Message.AudioMessage != nil {
+			audio := v.Message.GetAudioMessage()
+			data, err := mycli.WAClient.Download(audio)
+			if err != nil {
+				log.Printf("Failed to download file: %v", err)
+				//return response
+			}
+			exts, _ := mime.ExtensionsByType(audio.GetMimetype())
+			path := fmt.Sprintf("%s%s", "audio", exts[0])
+			err = os.WriteFile(path, data, 0600)
+			if err != nil {
+				log.Printf("Failed to save document: %v", err)
+				//return response
+			}
+			log.Printf("Saved document in message to %s", path)
+			// Use the ffmpeg command to convert the file
+			cmd := exec.Command("/opt/homebrew/bin/ffmpeg", "-y", "-i", path, path+".wav")
+			err = cmd.Run()
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+
+			fmt.Println("OGA to WAV conversion successful!")
+			x := transcribe(path + ".wav")
+			response := talkToGPT(x.Response)
+			sendToWhatsapp(mycli, v.Info, response.Response)
+
+			return
+		} else if msg == "/schema" {
 			schema := getSchema()
 			if len(schema.tables) > 0 {
 				message := fmt.Sprintf("This is the list of existing data you already have:\n%s\n%s\n",
@@ -214,6 +244,35 @@ func sendToGroupWhatsapp(mycli *MyClient, info types.GroupInfo, message string) 
 	response := &waProto.Message{Conversation: proto.String(message)}
 
 	mycli.WAClient.SendMessage(context.Background(), info.JID, "", response)
+}
+
+func transcribe(file string) ResponseData {
+	var data ResponseData
+	// Make a http request to localhost:5001/chat?q= with the message, and send the response
+	// URL encode the message
+	urlEncoded := url.QueryEscape(file)
+	url := "http://localhost:5001/transcribe?q=" + urlEncoded
+	// Make the request
+	resp, err := http.Get(url)
+	if err != nil {
+		fmt.Println("Error making request:", err)
+		return data
+	}
+	defer resp.Body.Close()
+
+	decoder := json.NewDecoder(resp.Body)
+	for {
+		// Decode the next value in the response
+		err = decoder.Decode(&data)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			// Handle the error
+		}
+	}
+
+	return data
 }
 
 func talkToGPT(message string) ResponseData {
