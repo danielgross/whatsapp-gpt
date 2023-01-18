@@ -90,6 +90,7 @@ func (mycli *MyClient) eventHandler(evt interface{}) {
 			x := transcribe(path + ".wav")
 			response := talkToGPT(x.Response)
 			sendToWhatsapp(mycli, v.Info, response.Response)
+			sendFileToWhatsapp(mycli, v.Info, response.Mp3)
 
 			return
 		} else if msg == "/schema" {
@@ -238,6 +239,52 @@ func sendToWhatsapp(mycli *MyClient, info types.MessageInfo, message string) {
 	mycli.WAClient.SendMessage(context.Background(), types.NewJID(user, server), "", response)
 }
 
+func sendFileToWhatsapp(mycli *MyClient, info types.MessageInfo, message string) {
+	fmt.Println("Response to Whatsapp: ", message)
+
+	user := info.Sender.User
+	server := types.DefaultUserServer
+	if info.IsGroup {
+		user = info.Chat.User
+		server = types.GroupServer
+	}
+	file, err := os.Open(message)
+	if err != nil {
+		fmt.Println("Error opening file:", err)
+		return
+	}
+	defer file.Close()
+	fileInfo, err := file.Stat()
+	if err != nil {
+		fmt.Println("Error getting file info:", err)
+		return
+	}
+
+	data := make([]byte, fileInfo.Size())
+	_, err = io.ReadFull(file, data)
+	if err != nil {
+		fmt.Println("Error reading file:", err)
+		return
+	}
+	resp, _ := mycli.WAClient.Upload(context.Background(), data, whatsmeow.MediaAudio)
+	// handle error
+	audioMsg := &waProto.AudioMessage{
+		Mimetype:      proto.String("audio/mp3"),
+		Url:           &resp.URL,
+		DirectPath:    &resp.DirectPath,
+		MediaKey:      resp.MediaKey,
+		FileEncSha256: resp.FileEncSHA256,
+		FileSha256:    resp.FileSHA256,
+		FileLength:    &resp.FileLength,
+		Seconds:       proto.Uint32(1000),
+	}
+
+	mycli.WAClient.SendMessage(context.Background(), types.NewJID(user, server), "", &waProto.Message{
+		AudioMessage: audioMsg,
+	})
+	//mycli.WAClient.SendMessage(context.Background(), types.NewJID(user, server), "", response)
+}
+
 func sendToGroupWhatsapp(mycli *MyClient, info types.GroupInfo, message string) {
 	fmt.Println("Response to Whatsapp: ", message)
 
@@ -307,6 +354,7 @@ func talkToGPT(message string) ResponseData {
 type ResponseData struct {
 	Response string `json:"response"`
 	Code     string `json:"code"`
+	Mp3      string `json:"mp3"`
 }
 
 func main() {
