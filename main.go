@@ -89,9 +89,9 @@ func (mycli *MyClient) eventHandler(evt interface{}) {
 			fmt.Println("OGA to WAV conversion successful!")
 			x := transcribe(path + ".wav")
 			response := talkToGPT(x.Response)
-			sendToWhatsapp(mycli, v.Info, response.Response)
-			sendFileToWhatsapp(mycli, v.Info, response.Mp3)
-
+			//sendToWhatsapp(mycli, v.Info, response.Response)
+			sendFileToWhatsapp(mycli, v.Info, response.Mp3, audio)
+			//sendAudioMessageToWhatsapp(mycli, v.Info, audio)
 			return
 		} else if msg == "/schema" {
 			schema := getSchema()
@@ -239,16 +239,22 @@ func sendToWhatsapp(mycli *MyClient, info types.MessageInfo, message string) {
 	mycli.WAClient.SendMessage(context.Background(), types.NewJID(user, server), "", response)
 }
 
-func sendFileToWhatsapp(mycli *MyClient, info types.MessageInfo, message string) {
-	fmt.Println("Response to Whatsapp: ", message)
-
+func sendAudioMessageToWhatsapp(mycli *MyClient, info types.MessageInfo, message *waProto.AudioMessage) {
 	user := info.Sender.User
 	server := types.DefaultUserServer
 	if info.IsGroup {
 		user = info.Chat.User
 		server = types.GroupServer
 	}
-	file, err := os.Open(message)
+	mycli.WAClient.SendMessage(context.Background(), types.NewJID(user, server), "", &waProto.Message{
+		AudioMessage: message,
+	})
+}
+
+func sendFileToWhatsapp(mycli *MyClient, info types.MessageInfo, fileName string, orig *waProto.AudioMessage) {
+	fmt.Println("Response to Whatsapp with file: ", fileName)
+
+	file, err := os.Open(fileName)
 	if err != nil {
 		fmt.Println("Error opening file:", err)
 		return
@@ -269,20 +275,20 @@ func sendFileToWhatsapp(mycli *MyClient, info types.MessageInfo, message string)
 	resp, _ := mycli.WAClient.Upload(context.Background(), data, whatsmeow.MediaAudio)
 	// handle error
 	audioMsg := &waProto.AudioMessage{
-		Mimetype:      proto.String("audio/mp3"),
-		Url:           &resp.URL,
-		DirectPath:    &resp.DirectPath,
-		MediaKey:      resp.MediaKey,
-		FileEncSha256: resp.FileEncSHA256,
-		FileSha256:    resp.FileSHA256,
-		FileLength:    &resp.FileLength,
-		Seconds:       proto.Uint32(1000),
+		MediaKeyTimestamp: orig.MediaKeyTimestamp,
+		Ptt:               proto.Bool(false),
+		Mimetype:          proto.String("audio/ogg; codecs=opus"),
+		Url:               &resp.URL,
+		DirectPath:        &resp.DirectPath,
+		MediaKey:          resp.MediaKey,
+		FileEncSha256:     resp.FileEncSHA256,
+		FileSha256:        resp.FileSHA256,
+		FileLength:        &resp.FileLength,
+		Seconds:           proto.Uint32(4),
+		Waveform:          orig.Waveform,
 	}
 
-	mycli.WAClient.SendMessage(context.Background(), types.NewJID(user, server), "", &waProto.Message{
-		AudioMessage: audioMsg,
-	})
-	//mycli.WAClient.SendMessage(context.Background(), types.NewJID(user, server), "", response)
+	sendAudioMessageToWhatsapp(mycli, info, audioMsg)
 }
 
 func sendToGroupWhatsapp(mycli *MyClient, info types.GroupInfo, message string) {
