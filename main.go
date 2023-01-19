@@ -89,7 +89,7 @@ func (mycli *MyClient) eventHandler(evt interface{}) {
 			fmt.Println("OGA to WAV conversion successful!")
 			x := transcribe(path + ".wav")
 			response := talkToGPT(x.Response)
-			//sendToWhatsapp(mycli, v.Info, response.Response)
+			sendToWhatsapp(mycli, v.Info, response.Response)
 			sendFileToWhatsapp(mycli, v.Info, response.Mp3, audio)
 			//sendAudioMessageToWhatsapp(mycli, v.Info, audio)
 			return
@@ -277,7 +277,7 @@ func sendFileToWhatsapp(mycli *MyClient, info types.MessageInfo, fileName string
 	audioMsg := &waProto.AudioMessage{
 		MediaKeyTimestamp: orig.MediaKeyTimestamp,
 		Ptt:               proto.Bool(false),
-		Mimetype:          proto.String("audio/ogg; codecs=opus"),
+		Mimetype:          proto.String("audio/mpeg"),
 		Url:               &resp.URL,
 		DirectPath:        &resp.DirectPath,
 		MediaKey:          resp.MediaKey,
