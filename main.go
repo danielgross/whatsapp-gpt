@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"github.com/PullRequestInc/go-gpt3"
@@ -313,7 +314,9 @@ func main() {
 
 		sqlQuery = strings.ReplaceAll(sqlQuery, "tbooking", "dwh.mart_reporting.mart_booking")
 		sqlQuery = strings.ReplaceAll(sqlQuery, "tcompany", "DWH.MART_REPORTING.MART_COMPANY")
-		sqlResult := strings.Join(executeQuery(sqlQuery), "\n")
+		resultData := executeQuery(sqlQuery)
+		csvFile := saveToCsv(resultData)
+		sqlResult := strings.Join(resultData, "\n")
 		answer := sqlResult
 
 		conversationExpertTextRaw := explainSqlQueryExpert(sqlQuery)
@@ -324,11 +327,76 @@ func main() {
 		toMp3 := explainQuestionAndAnswer(conversation.fullMessage, answer)
 		mp3 := record(toMp3)
 		uploadVoice(bot, update.Message.Chat.ID, mp3.Mp3)
+		graph := createGraph(csvFile)
+		fmt.Println("Graph file name is ", graph)
 
 		if _, err := bot.Send(msg); err != nil {
 			log.Print(err)
 		}
 	}
+}
+
+func createGraph(csvFileName string) string {
+	// Create a new gnuplot command
+	cmd := exec.Command("gnuplot", "-p")
+
+	// Create a new pipe for the command's standard input
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return ""
+	}
+
+	// Set the gnuplot command's script
+	script := `set datafile separator ","
+set term png
+set output "graph.png"
+plot "` + csvFileName + `" using 1:2 with lines
+exit`
+
+	// Start the command
+	err = cmd.Start()
+	if err != nil {
+		return ""
+	}
+
+	// Write the script to the command's standard input
+	_, err = stdin.Write([]byte(script))
+	if err != nil {
+		return ""
+	}
+
+	// Close the command's standard input
+	stdin.Close()
+
+	// Wait for the command to finish
+	err = cmd.Wait()
+	if err != nil {
+		return ""
+	}
+
+	return "graph.png"
+}
+
+func saveToCsv(data []string) string {
+	// Create a new CSV file
+	file, err := os.Create("data.csv")
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+
+	// Create a new CSV writer
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	// Write the data to the CSV file
+	for _, str := range data {
+		err := writer.Write([]string{str})
+		if err != nil {
+			return ""
+		}
+	}
+	return file.Name()
 }
 
 func uploadVoice(bot *tgbotapi.BotAPI, chatID int64, filePath string) {
@@ -535,6 +603,7 @@ func buildPrompt(question string) string {
 	7. When you are asked to add something, you need to add it to the select statement
 	8. When dividing, always use NULLIFZERO
 	9. Always end an SQL SELECT query with a ; char
+    10. Always limit the select query to maximum of 20 records or less, as needed by the question, but never more than 20 records.
 	INPUT: Ilan Twig's bookings
 	OUTPUT: BOOKING_USER ilike '%Ilan Twig%'
 		###Snowflake tables,with their properties:

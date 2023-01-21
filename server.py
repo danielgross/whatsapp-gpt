@@ -21,18 +21,18 @@ PORT = 5001 if '--port' not in sys.argv else int(sys.argv[sys.argv.index('--port
 APP = flask.Flask(__name__)
 APP.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB
 
-PLAY = sync_playwright().start()
+#PLAY = sync_playwright().start()
 
 #BROWSER = PLAY.chromium.launch_persistent_context(
 #    user_data_dir=PROFILE_DIR,
 #    headless=False,
 #)
-BROWSER = PLAY.firefox.launch_persistent_context(
-    user_data_dir=PROFILE_DIR,
-    headless=False,
-    java_script_enabled=True,
-)
-PAGE = BROWSER.new_page()
+#BROWSER = PLAY.firefox.launch_persistent_context(
+#    user_data_dir=PROFILE_DIR,
+#    headless=False,
+#    java_script_enabled=True,
+#)
+#PAGE = BROWSER.new_page()
 
 def get_input_box():
     """Find the input box by searching for the largest visible one."""
@@ -108,6 +108,16 @@ def chat():
     }
     return jsonify(data)
 
+@APP.route("/record", methods=["GET"])
+def record():
+    message = flask.request.args.get("q")
+    print("Recording message: ", message)
+    mp3 = get_mp3_file(message)
+    data = {
+        "mp3": mp3
+    }
+    return jsonify(data)
+
 @APP.route("/transcribe", methods=["GET"])
 def transcribe():
     message = flask.request.args.get("q")
@@ -133,4 +143,5 @@ def start_browser():
         print("Logged in")
 
 if __name__ == "__main__":
-    start_browser()
+    APP.run(port=PORT, threaded=False)
+    #start_browser()
