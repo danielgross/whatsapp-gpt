@@ -238,7 +238,7 @@ type ResponseData struct {
 
 func main() {
 
-	bot, err := tgbotapi.NewBotAPI("5966095889:AAGu_EU88Som66FLvD2TftcnCP_pf1ypUH0")
+	bot, err := tgbotapi.NewBotAPI("XXXXX")
 	if err != nil {
 		log.Panic(err)
 	}
