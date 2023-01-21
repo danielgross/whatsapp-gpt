@@ -19,11 +19,11 @@ import (
 
 func getConfig() gosnowflake.Config {
 	return gosnowflake.Config{
-		Account:   "xxxx",
-		User:      "xxxx",
-		Password:  "xxxx",
-		Database:  "xxxx",
-		Warehouse: "xxxx",
+		Account:   "xxxxx",
+		User:      "xxxxx",
+		Password:  "xxxxx",
+		Database:  "xxxxx",
+		Warehouse: "xxxxx",
 	}
 }
 
