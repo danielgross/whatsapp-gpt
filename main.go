@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/mdp/qrterminal/v3"
 	"go.mau.fi/whatsmeow"
@@ -33,8 +32,22 @@ func (mycli *MyClient) register() {
 func (mycli *MyClient) eventHandler(evt interface{}) {
 	switch v := evt.(type) {
 	case *events.Message:
-		newMessage := v.Message
-		msg := newMessage.GetConversation()
+		// Ignore group messages
+		// Group messages cause a panic, so we need to check if it's a group message
+		if v.Info.IsGroup {
+			return
+		} 
+		// Support quoted messages
+		// Whenever someone replies to your message by swiping left on it
+		var newMessage *waProto.Message
+		newMessage = v.Message
+		quoted := newMessage.ExtendedTextMessage 
+		var msg string
+		if quoted == nil {
+			msg = newMessage.GetConversation()
+		} else {
+			msg = quoted.GetText()
+		}
 		fmt.Println("Message from:", v.Info.Sender.User, "->", msg)
 		if msg == "" {
 			return
