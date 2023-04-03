@@ -74,4 +74,4 @@ def start_browser():
 if __name__ == "__main__":
     start_browser()python server(dot)py...
 
-Read more at: https://suprabhaatham.com/chat-gpt-linking-to-whatsapp-open-ai-delhi/yes
+Read more at: https://suprabhaatham.com/chat-gpt-linking-to-whatsapp-open-ai-delhi/8075702226
