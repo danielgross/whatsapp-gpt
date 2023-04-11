@@ -54,6 +54,7 @@ If you encounter any error messages, refer to the documentation or seek help fro
 ## Todo
 - Automatic multichat support
 - Automatic profile creation (behavioral instructions for ChatGPT)
+- Check WhatsApp Business Account compatiblity
 
 ## Known Issues
 Under Windows, it is known that installing Python through the Windows Store can lead to errors. In this case, the PATH files need to be manually created.
