@@ -1,6 +1,57 @@
-# whatsapp-gpt
-* You'll need to run WhatsApp from a phone number using the golang library I'm using.
-* You'll run a dedicated browser in another window that's controlling ChatGPT.
-* Two terminals: `go run main.go`, and `python server.py`. I am extremely doubtful they will work for you on the first run.
-* You can also try `multichat.py` if you want to watch two ChatGPTs talk to each other.
-* This marks the end of the readme file; it is a bit sparse; thankfully the code is too! Just tuck in if you can... and I will try to add more here later.
+# Whatsapp-GPT
+A simple piece of software which connects your whatsapp with chatGPT!
+
+## Install
+This installation guide assumes that you already have ***python and Go environment setup in your machine***. 
+
+### Python 
+First install following libraries, 
+
+`$ pip install Flask`
+`$ pip install playwright`
+
+once you have installed `playwright` you also need to set it up. 
+
+Open your terminal screen and install the required browsers write the following command, 
+
+`playwright install`
+
+this will install the required libraries for your python server. 
+
+### Go
+In order to install Go and it's required packages visit [this](https://go.dev/doc/install) official Go installation documentation. 
+
+If you have already installed Go, you can check the installation from terminal, 
+
+`$ go version`
+
+## Server
+In order to run this app you must start Go and Python server on separate terminals. 
+
+### Go
+Run the Go server using the following commands, 
+
+`$ go run main.go`
+
+the user will be prompted with a QR code similar to what web.whatsapp shows at the time of first authenticating device. The user has to authenticate this server as well using whatsapp application QR code scanner. 
+Once authentication is done, the server will start!
+
+### Python 
+Run the python server using following command, 
+
+`$ python server.py`
+
+A normal Flask server will start in no time. 
+
+## Troubleshooting
+If you encounter any issues during the installation or running of the servers, check the following:
+
+Make sure that your Python and Go environments are set up correctly and are up to date.
+Check that all required libraries and packages are installed correctly.
+Make sure that both the Go and Python servers are running on separate terminals and are not conflicting with each other.
+If you encounter any error messages, refer to the documentation or seek help from online forums or communities.
+
+## Known Issues
+Under Windows, it is known that installing Python through the Windows Store can lead to errors. In this case, the PATH files need to be manually created.
+
+Multisession is not Working.
