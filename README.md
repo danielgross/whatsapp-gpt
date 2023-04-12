@@ -39,7 +39,7 @@ Once authentication is done, the server will start!
 ### Python 
 Run the python server using following command, 
 
-`$ python server.py`
+`$ python server-start.py`
 
 A normal Flask server will start in no time. 
 
