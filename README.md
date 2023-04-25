@@ -4,11 +4,16 @@ The Whatsapp GPT client is a tool that uses the playwright library instead of th
 ## Install
 This installation guide assumes that you already have ***python and Go environment setup in your machine***. 
 
+Debian Example:
+> sudo apt install python3
+> sudo update-alternatives --install  /usr/bin/python python /usr/bin/python3 1 
+
 ### Python 
 First install following libraries, 
 
-`$ pip install Flask`
-`$ pip install playwright`
+>$ pip install Flask
+
+>$ pip install playwright
 
 once you have installed `playwright` you also need to set it up. 
 
