@@ -62,6 +62,8 @@ If you encounter any error messages, refer to the documentation or seek help fro
 - Check WhatsApp Business Account compatiblity
 - Whitelist Sender
 - Resolve 500 Error after 2 hours
+- Automatic Login
+- Better Error Handling -> Screenshot sending 
 
 ## Known Issues
 Under Windows, it is known that installing Python through the Windows Store can lead to errors. In this case, the PATH files need to be manually created.
