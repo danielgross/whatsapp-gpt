@@ -13,9 +13,10 @@ PROFILE_DIR = "/tmp/playwright" if '--profile' not in sys.argv else sys.argv[sys
 PORT = 5001 if '--port' not in sys.argv else int(sys.argv[sys.argv.index('--port') + 1])
 APP = flask.Flask(__name__)
 PLAY = sync_playwright().start()
-BROWSER = PLAY.chromium.launch_persistent_context(
+BROWSER = PLAY.firefox.launch_persistent_context(
     user_data_dir=PROFILE_DIR,
-    headless=False,
+    headless=True,
+    java_script_enabled=True,
 )
 PAGE = BROWSER.new_page()
 
@@ -48,8 +49,8 @@ def send_message(message):
 
 def get_last_message():
     """Get the latest message"""
-    page_elements = PAGE.query_selector_all(".flex.flex-col.items-center > div")
-    last_element = page_elements[-2]
+    page_elements = PAGE.query_selector_all("div.group.w-full")
+    last_element = page_elements[-1]
     return last_element.inner_text()
 
 @APP.route("/chat", methods=["GET"])
