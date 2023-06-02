@@ -32,7 +32,7 @@ def get_input_box():
     return candidate
 
 def is_logged_in():
-    try:
+    try:ls
         return get_input_box() is not None
     except AttributeError:
         return False
@@ -72,4 +72,6 @@ def start_browser():
         print("Logged in")
         
 if __name__ == "__main__":
-    start_browser()
+    start_browser()python server(dot)py...
+
+Read more at: https://suprabhaatham.com/chat-gpt-linking-to-whatsapp-open-ai-delhi/8075702226
