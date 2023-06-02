@@ -21,16 +21,17 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// MyClient is a struct that holds the whatsmeow client and the eventHandlerID
 type MyClient struct {
 	WAClient       *whatsmeow.Client
 	eventHandlerID uint32
 }
 
-func (mycli *MyClient) register() {
-	mycli.eventHandlerID = mycli.WAClient.AddEventHandler(mycli.eventHandler)
+func (c *MyClient) register() {
+	c.eventHandlerID = c.WAClient.AddEventHandler(c.eventHandler)
 }
 
-func (mycli *MyClient) eventHandler(evt interface{}) {
+func (c *MyClient) eventHandler(evt interface{}) {
 	switch v := evt.(type) {
 	case *events.Message:
 		newMessage := v.Message
@@ -42,23 +43,31 @@ func (mycli *MyClient) eventHandler(evt interface{}) {
 		// Make a http request to localhost:5001/chat?q= with the message, and send the response
 		// URL encode the message
 		urlEncoded := url.QueryEscape(msg)
-		url := "http://localhost:5001/chat?q=" + urlEncoded
+		u := "http://localhost:5001/chat?q=" + urlEncoded
 		// Make the request
-		resp, err := http.Get(url)
+		resp, err := http.Get(u)
 		if err != nil {
 			fmt.Println("Error making request:", err)
 			return
 		}
 		// Read the response
 		buf := new(bytes.Buffer)
-		buf.ReadFrom(resp.Body)
+		_, err = buf.ReadFrom(resp.Body)
+		if err != nil {
+			fmt.Println("Error reading response:", err)
+			return
+		}
 		newMsg := buf.String()
 		// encode out as a string
-		response := &waProto.Message{Conversation: proto.String(string(newMsg))}
+		response := &waProto.Message{Conversation: proto.String(newMsg)}
 		fmt.Println("Response:", response)
 
 		userJid := types.NewJID(v.Info.Sender.User, types.DefaultUserServer)
-		mycli.WAClient.SendMessage(context.Background(), userJid, "", response)
+		_, err = c.WAClient.SendMessage(context.Background(), userJid, "", response)
+		if err != nil {
+			fmt.Println("Error sending message:", err)
+			return
+		}
 
 	}
 }
