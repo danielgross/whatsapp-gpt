@@ -17,11 +17,11 @@ BROWSER = PLAY.chromium.launch_persistent_context(
     user_data_dir=PROFILE_DIR,
     headless=False,
 )
-PAGE = BROWSER.new_page()
+USERS = []
+PAGES = []
 
-def get_input_box():
-    """Find the input box by searching for the largest visible one."""
-    textareas = PAGE.query_selector_all("textarea")
+def get_input_box(user):
+    textareas = PAGES[USERS.index(user)].query_selector_all("textarea")
     candidate = None
     for textarea in textareas:
         if textarea.is_visible():
@@ -37,39 +37,47 @@ def is_logged_in():
     except AttributeError:
         return False
 
-def send_message(message):
-    # Send the message
-    box = get_input_box()
+def send_message(user, message):
+    box = get_input_box(user)
     box.click()
     box.fill(message)
     box.press("Enter")
-    while PAGE.query_selector(".result-streaming") is not None:
+    time.sleep(1)
+    while PAGES[USERS.index(user)].query_selector('.self-end.visible') is None:
         time.sleep(0.1)
 
-def get_last_message():
-    """Get the latest message"""
-    page_elements = PAGE.query_selector_all(".flex.flex-col.items-center > div")
-    last_element = page_elements[-2]
+def get_last_message(user):
+    page_elements = PAGES[USERS.index(user)].query_selector_all('[data-message-author-role="assistant"]')
+    last_element = page_elements[len(page_elements) - 1]
     return last_element.inner_text()
 
 @APP.route("/chat", methods=["GET"])
 def chat():
+    user = flask.request.args.get("user")
+    index = USERS.index(user) if user in USERS else -1
+    if index == -1:
+        USERS.append(user)
+        PAGES.append(BROWSER.new_page())	
+        PAGES[USERS.index(user)].goto("https://chat.openai.com/")
+        time.sleep(2)
+
     message = flask.request.args.get("q")
     print("Sending message: ", message)
-    send_message(message)
-    response = get_last_message()
+    send_message(user, message)
+    response = get_last_message(user)
     print("Response: ", response)
     return response
 
 def start_browser():
-    PAGE.goto("https://chat.openai.com/")
-    APP.run(port=PORT, threaded=False)
-    if not is_logged_in():
-        print("Please log in to OpenAI Chat")
-        print("Press enter when you're done")
-        input()
-    else:
-        print("Logged in")
-        
+	PAGE = BROWSER.new_page()
+	PAGE.goto("https://chat.openai.com/")
+	APP.run(port=PORT, threaded=False)
+	if not is_logged_in():
+		print("Please log in to OpenAI Chat")
+		print("Press enter when you're done")
+		input()
+	else:
+		print("Logged in")
+
 if __name__ == "__main__":
-    start_browser()
+	start_browser()
