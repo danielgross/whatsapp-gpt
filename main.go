@@ -58,7 +58,12 @@ func (mycli *MyClient) eventHandler(evt interface{}) {
 		fmt.Println("Response:", response)
 
 		userJid := types.NewJID(v.Info.Sender.User, types.DefaultUserServer)
-		mycli.WAClient.SendMessage(context.Background(), userJid, "", response)
+
+		//Updating the syntax in the message
+		_, err = mycli.WAClient.SendMessage(context.Background(), userJid, response, whatsmeow.SendRequestExtra{})
+        	if err != nil {
+            		fmt.Println("Error sending message:", err)
+        	}
 
 	}
 }
