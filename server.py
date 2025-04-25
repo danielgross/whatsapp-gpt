@@ -48,9 +48,18 @@ def send_message(message):
 
 def get_last_message():
     """Get the latest message"""
-    page_elements = PAGE.query_selector_all(".flex.flex-col.items-center > div")
-    last_element = page_elements[-2]
-    return last_element.inner_text()
+    # Wait for messages to appear (up to 10 seconds)
+    max_retries = 20
+    retry_count = 0
+    while retry_count < max_retries:
+        page_elements = PAGE.query_selector_all(".flex.flex-col.items-center > div")
+        if len(page_elements) >= 2:
+            return page_elements[-2].inner_text()
+        time.sleep(0.5)
+        retry_count += 1
+    
+    # If we couldn't find any messages after waiting
+    raise Exception("No messages found after waiting for response")
 
 @APP.route("/chat", methods=["GET"])
 def chat():
